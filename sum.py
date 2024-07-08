@@ -47,6 +47,10 @@ user_organisation = db.Table('user_organisation',
                              db.Column('organisation_id', db.String, db.ForeignKey('organisations.orgId'),
                                        primary_key=True))
 
+@app.route('/', methods=['GET'])
+def status():
+    return 'API SUCCESSFUL'
+
 @app.route('/auth/register', methods=['POST'])
 def register():
     data = request.json
