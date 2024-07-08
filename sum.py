@@ -14,7 +14,9 @@ import os
 
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://postgres:greatone@localhost:5432/myorderdb"
+load_dotenv()
+# app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://postgres:greatone@localhost:5432/myorderdb"
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('db_con')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv('secret_key')
 
@@ -305,5 +307,4 @@ def add_user_to_organisation(org_id):
 
 
 if __name__ == '__main__':
-    load_dotenv()
     app.run()
