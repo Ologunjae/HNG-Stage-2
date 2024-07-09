@@ -10,42 +10,52 @@ from flask_jwt_extended import (
 )
 from dotenv import load_dotenv
 import os
+import uuid
+
+
+
+from models import session, User, Organisation, user_organisation
 # from flask_swagger_ui import get_swaggerui_blueprint
 
+# db = session
 
+session.rollback()
 app = Flask(__name__)
 load_dotenv()
 # app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://postgres:greatone@localhost:5432/myorderdb"
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('db_con')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('db_con')
+# app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv('secret_key')
 
-db = SQLAlchemy(app)
+# db = SQLAlchemy(app)
 jwt = JWTManager(app)
 
+# user_organisation = Table('user_organisation',
+#                              Column('user_id', String, ForeignKey('users.userId')),
+#                              Column('organisation_id', String, ForeignKey('organisations.orgId')))
 
-class User(db.Model):
-    __tablename__ = 'users'
 
-    userId = db.Column(db.String, primary_key=True, unique=True)
-    firstName = db.Column(db.String, nullable=False)
-    lastName = db.Column(db.String, nullable=False)
-    email = db.Column(db.String, nullable=False, unique=True)
-    password = db.Column(db.String, nullable=False)
-    phone = db.Column(db.String)
-    organisations = db.relationship('Organisation', secondary='user_organisation')
+# class User(Model):
+#     __tablename__ = 'users'
 
-class Organisation(db.Model):
-    __tablename__ = 'organisations'
+#     userId = Column(String, primary_key=True, unique=True)
+#     firstName = Column(String, nullable=False)
+#     lastName = Column(String, nullable=False)
+#     email = Column(String, nullable=False, unique=True)
+#     password = Column(String, nullable=False)
+#     phone = Column(String)
 
-    orgId = db.Column(db.String, primary_key=True, unique=True)
-    name = db.Column(db.String, nullable=False)
-    description = db.Column(db.String)
+#     orgs = relationship('Organisation', secondary= user_organisation, back_populates= 'users')
 
-user_organisation = db.Table('user_organisation',
-                             db.Column('user_id', db.String, db.ForeignKey('users.userId'), primary_key=True),
-                             db.Column('organisation_id', db.String, db.ForeignKey('organisations.orgId'),
-                                       primary_key=True))
+# class Organisation(Model):
+#     __tablename__ = 'organisations'
+
+#     orgId = Column(String, primary_key=True, unique=True)
+#     name = Column(String, nullable=False)
+#     description = Column(String)
+
+#     org_users = relationship('User', secondary= user_organisation, back_populates= 'organisations')
+
 
 @app.route('/', methods=['GET'])
 def status():
@@ -68,55 +78,64 @@ def register():
         return jsonify({'errors': errors}), 422
     
 
-    try:
-        hashed_password = generate_password_hash(data['password'], method='pbkdf2:sha256')
-        user = User(
-            userId=data['userId'],
-            firstName=data['firstName'],
-            lastName=data['lastName'],
-            email=data['email'],
-            password=hashed_password,
-            phone=data.get('phone')
-        )
-        db.session.add(user)
-        db.session.commit()
-
-        # Create default organization
-        org_name = f"{data['firstName']}'s Organisation"
-        org = Organisation(
-            orgId=user.userId,
+    # try:
+    hashed_password = generate_password_hash(data['password'], method='pbkdf2:sha256')
+    org_name = f"{data['firstName']}'s Organisation"
+    user = User(
+        userId=str(uuid.uuid4()),
+        firstName=data['firstName'],
+        lastName=data['lastName'],
+        email=data['email'],
+        password=hashed_password,
+        phone=data.get('phone'),
+        organisations = [Organisation(
+            orgId=str(uuid.uuid4()),
             name=org_name,
             description=''
-        )
-        db.session.add(org)
-        db.session.commit()
+        )]
+    )
+    
+    # session.add(user)
+    # session.commit()
 
-        access_token = create_access_token(identity=user.userId)
-        return jsonify({
-            'status': 'success',
-            'message': 'Registration successful',
-            'data': {
-                'accessToken': access_token,
-                'user': {
-                    'userId': user.userId,
-                    'firstName': user.firstName,
-                    'lastName': user.lastName,
-                    'email': user.email,
-                    'phone': user.phone
-                }
+    # Create default organization
+    
+    
+
+    # user.organisations.append(org.orgId)
+    # org.users.append(user.userId)
+    session.add(user)
+    # session.add(org)
+    
+    session.commit()
+
+    access_token = create_access_token(identity=user.userId)
+    return jsonify({
+        'status': 'success',
+        'message': 'Registration successful',
+        'data': {
+            'accessToken': access_token,
+            'user': {
+                'userId': user.userId,
+                'firstName': user.firstName,
+                'lastName': user.lastName,
+                'email': user.email,
+                'phone': user.phone
             }
-        }), 201
+        }
+    }), 201
 
-    except IntegrityError as e:
-        db.session.rollback()
-        field = str(e.orig.diag.column_name)
-        message = f"{field.capitalize()} already exists."
-        return jsonify({'errors': [{'field': field, 'message': message}]}), 422
 
-    except Exception as e:
-        db.session.rollback()
+# except IntegrityError as e:
+# session.rollback()
+# field = str(e.orig.diag.column_name)
+# message = f"{field.capitalize()} already exists."
+# return jsonify({'errors': [{'field': field, 'message': message}]}), 422
 
-        return jsonify({'errors': [{'message': str(e)}]}), 500
+# except Exception as e:
+# session.rollback()
+
+# return jsonify({'errors': [{'message': str(e)}]}), 500
 
 
 @app.route('/auth/login', methods=['POST'])
@@ -128,7 +147,7 @@ def login():
     if not email or not password:
         return jsonify({'status': 'Bad request', 'message': 'Email and password are required.', 'statusCode': 400}), 400
 
-    user = User.query.filter_by(email=email).first()
+    user= session.query(User).filter_by(email=email).first()
 
     if not user or not check_password_hash(user.password, password):
         return jsonify({'status': 'Bad request', 'message': 'Authentication failed', 'statusCode': 401}), 401
@@ -153,22 +172,24 @@ def login():
 @app.route('/api/users/<user_id>', methods=['GET'])
 @jwt_required()
 def get_user(user_id):
+    if len(user_id)<30:
+        return jsonify({'status': 'Bad request', 'message': 'User not found', 'statusCode': 400}), 400
     current_user_id = get_jwt_identity()
 
     # Check if the user is allowed to access the requested user's data
     if user_id != current_user_id:
-        org = Organisation.query.filter(Organisation.orgId == user_id).first()
+        org = session.query(Organisation).filter(Organisation.orgId == user_id).first()
 
         if not org:
             return jsonify({'status': 'Bad request', 'message': 'User not found', 'statusCode': 400}), 400
 
-        user_belongs_to_org = db.session.query(Organisation, User).filter(User.userId == current_user_id).filter(
+        user_belongs_to_org = session.query(Organisation, User).filter(User.userId == current_user_id).filter(
             Organisation.orgId == user_id).first()
 
         if not user_belongs_to_org:
             return jsonify({'status': 'Bad request', 'message': 'User not found', 'statusCode': 400}), 400
 
-    user = User.query.filter_by(userId=user_id).first()
+    user = session.query(User).filter_by(userId=user_id).first()
 
     if not user:
         return jsonify({'status': 'Bad request', 'message': 'User not found', 'statusCode': 400}), 400
@@ -190,11 +211,11 @@ def get_user(user_id):
 @jwt_required()
 def get_organisations():
     current_user_id = get_jwt_identity()
-    user_orgs = Organisation.query.filter(Organisation.orgId == current_user_id).all()
-
-    organisations = []
-    for org in user_orgs:
-        organisations.append({
+    user_orgs = session.query(User).filter(User.userId == current_user_id).first()
+    # print(user_orgs[0].organisations)
+    us_organisations = []
+    for org in user_orgs.organisations:
+        us_organisations.append({
             'orgId': org.orgId,
             'name': org.name,
             'description': org.description
@@ -204,7 +225,7 @@ def get_organisations():
         'status': 'success',
         'message': 'Organisations retrieved successfully',
         'data': {
-            'organisations': organisations
+            'organisations': us_organisations
         }
     }), 200
 
@@ -212,13 +233,16 @@ def get_organisations():
 @app.route('/api/organisations/<org_id>', methods=['GET'])
 @jwt_required()
 def get_organisation(org_id):
+    if len(org_id)<30:
+        return jsonify({'status': 'Bad request', 'message': 'User not found', 'statusCode': 400}), 400
     current_user_id = get_jwt_identity()
-    org = Organisation.query.filter(Organisation.orgId == org_id).first()
+    current_user_id = get_jwt_identity()
+    org = session.query(Organisation).filter(Organisation.orgId == org_id).first()
 
     if not org:
         return jsonify({'status': 'Bad request', 'message': 'Organisation not found', 'statusCode': 400}), 400
 
-    user_belongs_to_org = db.session.query(Organisation, User).filter(User.userId == current_user_id).filter(
+    user_belongs_to_org = session.query(Organisation, User).filter(User.userId == current_user_id).filter(
         Organisation.orgId == org_id).first()
 
     if not user_belongs_to_org:
@@ -254,13 +278,19 @@ def create_organisation():
     current_user_id = get_jwt_identity()
 
     org = Organisation(
-        orgId= current_user_id,
+        orgId= str(uuid.uuid4()),
         name=data['name'],
         description=data.get('description', '')
     )
+    try:
+        session.add(org)
+        session.commit()
 
-    db.session.add(org)
-    db.session.commit()
+    except IntegrityError as e:
+        session.rollback()
+        field = str(e.orig.diag.column_name)
+        message = f"{field.capitalize()} already exists."
+        return jsonify({'errors': [{'field': field, 'message': message}]}), 422
 
     return jsonify({
         'status': 'success',
@@ -281,23 +311,23 @@ def add_user_to_organisation(org_id):
     if not user_id:
         return jsonify({'status': 'Bad request', 'message': 'User ID is required.', 'statusCode': 400}), 400
 
-    org = Organisation.query.filter(Organisation.orgId == org_id).first()
+    org = session.query(Organisation).filter(Organisation.orgId == org_id).first()
 
     if not org:
         return jsonify({'status': 'Bad request', 'message': 'Organisation not found', 'statusCode': 400}), 400
 
-    user = User.query.filter(User.userId == user_id).first()
+    user = session.query(User).filter(User.userId == user_id).first()
 
     if not user:
         return jsonify({'status': 'Bad request', 'message': 'User not found', 'statusCode': 400}), 400
 
-    user_belongs_to_org = db.session.query(Organisation, User).filter(User.userId == user_id).filter(Organisation.orgId == org_id).first()
+    user_belongs_to_org = session.query(Organisation, User).filter(User.userId == user_id).filter(Organisation.orgId == org_id).first()
 
     if not user_belongs_to_org:
         return jsonify({'status': 'Bad request', 'message': 'User not found', 'statusCode': 400}), 400
 
     user.organisations.append(org)
-    db.session.commit()
+    session.commit()
 
     return jsonify({
         'status': 'success',
